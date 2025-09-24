@@ -1,22 +1,42 @@
+# app.py
 from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from dotenv import load_dotenv
-from models import User, Worker, Contractor, Job, JobApplication
 import os
+
+# Import db and JWT
+from extensions import db
+from flask_jwt_extended import JWTManager
+
+from routes import bp as api_bp
+
+
 
 load_dotenv()
 
+# ------------------------
+# Initialize Flask app
+# ------------------------
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-key")
 
-db = SQLAlchemy(app)
+# Register the Blueprint
+app.register_blueprint(api_bp)
 
+# ------------------------
+# Initialize extensions
+# ------------------------
+db.init_app(app)
+jwt = JWTManager(app)
+
+# ------------------------
+# Simple healthcheck route
+# ------------------------
 @app.route("/")
 def home():
     try:
-        # SQLAlchemy 2.x requires text() for raw SQL
         with db.engine.connect() as conn:
             result = conn.execute(text("SELECT 1"))
             if result.scalar() == 1:
@@ -36,5 +56,13 @@ def home():
             "error": str(e)
         })
 
+# ------------------------
+# Import routes AFTER db & app are initialized
+# ------------------------
+import routes  # contains signup/login endpoints
+
+# ------------------------
+# Run app
+# ------------------------
 if __name__ == "__main__":
     app.run(debug=True)
