@@ -1,11 +1,15 @@
 # routes.py
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import (
+    jwt_required, create_access_token, get_jwt_identity, get_jwt
+)
 from extensions import db
 from models import User, Worker, Contractor, Job, JobApplication
 
-# Create a Blueprint to avoid circular imports
+# ----------------------
+# Create Blueprint
+# ----------------------
 bp = Blueprint("api", __name__)
 
 # ----------------------
@@ -29,7 +33,7 @@ def signup():
     db.session.add(user)
     db.session.commit()
 
-    # Create role-specific record
+    # Role-specific record
     if role == "worker":
         worker = Worker(user_id=user.id, name=data.get("name"))
         db.session.add(worker)
@@ -41,7 +45,6 @@ def signup():
 
     db.session.commit()
     return jsonify({"message": f"{role.capitalize()} signed up successfully", "user_id": user.id})
-
 
 # ----------------------
 # LOGIN
@@ -56,9 +59,12 @@ def login():
     if not user or not check_password_hash(user.password_hash, password):
         return jsonify({"error": "Invalid credentials"}), 401
 
-    access_token = create_access_token(identity={"id": user.id, "role": user.role})
-    return jsonify({"access_token": access_token, "user_id": user.id, "role": user.role})
+    access_token = create_access_token(
+        identity=str(user.id),           # must be string
+        additional_claims={"role": user.role}
+    )
 
+    return jsonify({"access_token": access_token, "user_id": user.id, "role": user.role})
 
 # ----------------------
 # POST A JOB (Contractor)
@@ -66,8 +72,10 @@ def login():
 @bp.route("/jobs", methods=["POST"])
 @jwt_required()
 def post_job():
-    identity = get_jwt_identity()
-    if identity["role"] != "contractor":
+    user_id = int(get_jwt_identity())
+    role = get_jwt()["role"]
+
+    if role != "contractor":
         return jsonify({"error": "Only contractors can post jobs"}), 403
 
     data = request.get_json()
@@ -75,16 +83,15 @@ def post_job():
         title=data.get("title"),
         description=data.get("description"),
         location=data.get("location"),
-        contractor_id=identity["id"],
+        contractor_id=user_id,
         required_skills=data.get("required_skills")
     )
     db.session.add(job)
     db.session.commit()
     return jsonify({"message": "Job posted successfully", "job_id": job.id})
 
-
 # ----------------------
-# LIST ALL JOBS (Open for workers)
+# LIST ALL JOBS (Workers)
 # ----------------------
 @bp.route("/jobs", methods=["GET"])
 @jwt_required()
@@ -102,71 +109,62 @@ def list_jobs():
         })
     return jsonify(jobs_list)
 
-
 # ----------------------
 # APPLY TO JOB (Worker)
 # ----------------------
 @bp.route("/jobs/<int:job_id>/apply", methods=["POST"])
 @jwt_required()
 def apply_job(job_id):
-    identity = get_jwt_identity()
-    if identity["role"] != "worker":
+    user_id = int(get_jwt_identity())
+    role = get_jwt()["role"]
+
+    if role != "worker":
         return jsonify({"error": "Only workers can apply to jobs"}), 403
 
     job = Job.query.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
-    existing_application = JobApplication.query.filter_by(worker_id=identity["id"], job_id=job_id).first()
+    existing_application = JobApplication.query.filter_by(worker_id=user_id, job_id=job_id).first()
     if existing_application:
         return jsonify({"error": "Already applied to this job"}), 400
 
-    application = JobApplication(worker_id=identity["id"], job_id=job_id)
+    application = JobApplication(worker_id=user_id, job_id=job_id)
     db.session.add(application)
     db.session.commit()
     return jsonify({"message": "Application submitted successfully"})
 
-
 # ----------------------
-# ADMIN: LIST ALL USERS
+# ADMIN: LIST USERS
 # ----------------------
 @bp.route("/admin/users", methods=["GET"])
 @jwt_required()
 def list_users():
-    identity = get_jwt_identity()
-    if identity["role"] != "admin":
+    role = get_jwt()["role"]
+    if role != "admin":
         return jsonify({"error": "Admin access required"}), 403
 
     users = User.query.all()
-    user_list = []
-    for u in users:
-        user_list.append({
-            "id": u.id,
-            "email": u.email,
-            "role": u.role
-        })
+    user_list = [{"id": u.id, "email": u.email, "role": u.role} for u in users]
     return jsonify(user_list)
 
-
 # ----------------------
-# ADMIN: LIST ALL JOBS
+# ADMIN: LIST JOBS
 # ----------------------
 @bp.route("/admin/jobs", methods=["GET"])
 @jwt_required()
 def list_jobs_admin():
-    identity = get_jwt_identity()
-    if identity["role"] != "admin":
+    role = get_jwt()["role"]
+    if role != "admin":
         return jsonify({"error": "Admin access required"}), 403
 
     jobs = Job.query.all()
-    job_list = []
-    for j in jobs:
-        job_list.append({
-            "id": j.id,
-            "title": j.title,
-            "description": j.description,
-            "location": j.location,
-            "contractor_id": j.contractor_id,
-            "required_skills": j.required_skills
-        })
+    job_list = [{
+        "id": j.id,
+        "title": j.title,
+        "description": j.description,
+        "location": j.location,
+        "contractor_id": j.contractor_id,
+        "required_skills": j.required_skills
+    } for j in jobs]
     return jsonify(job_list)
