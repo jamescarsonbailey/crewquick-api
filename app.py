@@ -1,13 +1,12 @@
 # app.py
 from flask import Flask, jsonify
+from flask_cors import CORS
 from sqlalchemy import text
 from dotenv import load_dotenv
 import os
 
-# Import db and JWT
 from extensions import db
 from flask_jwt_extended import JWTManager
-
 from routes import bp as api_bp
 
 
@@ -22,8 +21,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-key")
 
-# Register the Blueprint
 app.register_blueprint(api_bp)
+
+CORS(app, resources={r"/*": {"origins": "*"}})  # tighten to your Vercel domain later
+
 
 # ------------------------
 # Initialize extensions
