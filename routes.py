@@ -114,22 +114,42 @@ def post_job():
     return jsonify({"message": "Job posted successfully", "job_id": job.id})
 
 # ----------------------
-# LIST ALL JOBS (Workers/Contractors)
+# LIST ALL JOBS (Workers)
 # ----------------------
-@bp.route("/jobs", methods=["GET", "OPTIONS"])
-@cross_origin(**CORS_KW)
+@bp.route("/jobs", methods=["GET"])
 @jwt_required()
-def list_jobs():
-    jobs = Job.query.order_by(Job.created_at.desc()).all()
-    return jsonify([{
+def list_jobs_worker():
+    jobs = Job.query.all()
+    jobs_list = [{
         "id": j.id,
         "title": j.title,
         "description": j.description,
         "location": j.location,
         "contractor_id": j.contractor_id,
-        "required_skills": j.required_skills,
-        "created_at": j.created_at.isoformat() if j.created_at else None
-    } for j in jobs])
+        "required_skills": j.required_skills
+    } for j in jobs]
+    return jsonify(jobs_list)
+
+# ----------------------
+# ADMIN: LIST JOBS
+# ----------------------
+@bp.route("/admin/jobs", methods=["GET"])
+@jwt_required()
+def list_jobs_admin():
+    role = get_jwt()["role"]
+    if role != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    jobs = Job.query.all()
+    job_list = [{
+        "id": j.id,
+        "title": j.title,
+        "description": j.description,
+        "location": j.location,
+        "contractor_id": j.contractor_id,
+        "required_skills": j.required_skills
+    } for j in jobs]
+    return jsonify(job_list)
 
 # ----------------------
 # APPLY TO JOB (Worker)
@@ -177,26 +197,8 @@ def list_users():
     return jsonify([{"id": u.id, "email": u.email, "role": u.role} for u in users])
 
 # ----------------------
-# ADMIN: LIST JOBS
+# WORKER: LIST JOBS
 # ----------------------
-@bp.route("/admin/jobs", methods=["GET", "OPTIONS"])
-@cross_origin(**CORS_KW)
-@jwt_required()
-def list_jobs_admin():
-    role = get_jwt()["role"]
-    if role != "admin":
-        return jsonify({"error": "Admin access required"}), 403
-
-    jobs = Job.query.order_by(Job.created_at.desc()).all()
-    return jsonify([{
-        "id": j.id,
-        "title": j.title,
-        "description": j.description,
-        "location": j.location,
-        "contractor_id": j.contractor_id,
-        "required_skills": j.required_skills,
-        "created_at": j.created_at.isoformat() if j.created_at else None
-    } for j in jobs])
 
 @bp.route("/me", methods=["GET", "OPTIONS"])
 @cross_origin(**CORS_KW)
